@@ -26,7 +26,8 @@ suppressMessages(library(argparser))
 parser = arg_parser('Description: merge dotter2gpseq.py output, add dataset and
 cell type information. The software looks for dotter2gpseq.py output in
 subfolders of the specified input directories. These subfolders must be named as
-dataset_series, with series being in XXX format with leading zeros.
+dataset_series, with series being in XXX format with leading zeros. Please, note
+that the channel is enforced as lower-case by the merge operation.
 
 Example 1: output in current directory.
 ./merge_data.R -m meta_HAP1.tsv meta_IMR90.tsv -i HAP1/dots_auto IMR90/dots_auto
@@ -94,7 +95,7 @@ l1 = lapply(1:nrow(data), FUN = function(i) {
 	
 	# Iterate through metadata
 	l2 = by(md, paste0(md$dataset, "~", md$series), FUN = function(subt) {
-		# Extract dataset and series information
+		# Extract dataset and series information -------------------------------
 		dataset = subt$dataset[1]
 		series = sprintf("%03d", subt$series[1])
 		flag = paste0(dataset, "_", series)
@@ -105,7 +106,7 @@ l1 = lapply(1:nrow(data), FUN = function(i) {
 		# Log current status
 		cat(paste0("Working on ", flag, ".\n"))
 
-		# Identify input folder and skip if missing
+		# Identify input folder and skip if missing ----------------------------
 		ipath = paste0(indir, "/", flag)
 		if( !dir.exists(ipath) ) {
 			cat(paste0("Warning: cannot find folder for ", flag,
@@ -113,7 +114,7 @@ l1 = lapply(1:nrow(data), FUN = function(i) {
 			return(NULL)
 		}
 
-		# Identify input files
+		# Identify input files -------------------------------------------------
 		flist = list.files(ipath)
 		nuclei = flist[grepl("nuclei.out", flist)]
 		dots = flist[grepl("wCentr.out", flist) & ! grepl("noAllele", flist)]
@@ -132,6 +133,7 @@ l1 = lapply(1:nrow(data), FUN = function(i) {
 		} else {
 			dots = read.delim(paste0(ipath, "/", dots),
 				as.is = T, header = T)
+			dots$Channel = tolower(dots$Channel)
 		}
 
 		# Skip if missing file
@@ -139,7 +141,7 @@ l1 = lapply(1:nrow(data), FUN = function(i) {
 			return(NULL)
 		}
 
-		# Add dataset, series and cell_type information
+		# Add dataset, series and cell_type information ------------------------
 		dots$dataset = rep(dataset, nrow(dots))
 		dots$label = rep(label, nrow(dots))
 		dots$probe_label = rep(probe_label, nrow(dots))
@@ -147,7 +149,7 @@ l1 = lapply(1:nrow(data), FUN = function(i) {
 		nuclei$dataset = rep(dataset, nrow(nuclei))
 		nuclei$cell_type = rep(cell_type, nrow(nuclei))
 
-		# Prepare
+		# Prepare allele by channel table --------------------------------------
 		aldata = as.numeric(dots$Allele)
 		aldata = dots[0 < aldata & !is.na(aldata),]
 		if( 0 != nrow(aldata) ) {
@@ -175,7 +177,7 @@ l1 = lapply(1:nrow(data), FUN = function(i) {
 			alleles = NULL
 		}
 
-		# Output
+		# Output ---------------------------------------------------------------
 		return(list(dots = dots, nuclei = nuclei, alleles = alleles))
 	})
 
