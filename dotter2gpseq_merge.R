@@ -93,14 +93,14 @@ l1 = lapply(1:nrow(data), FUN = function(i) {
 	})
 	
 	# Iterate through metadata
-	l2 = lapply(1:nrow(md), FUN = function(j) {
+	l2 = by(md, paste0(md$dataset, "~", md$series), FUN = function(subt) {
 		# Extract dataset and series information
-		dataset = md$dataset[j]
-		series = sprintf("%03d", md$series[j])
+		dataset = subt$dataset[1]
+		series = sprintf("%03d", subt$series[1])
 		flag = paste0(dataset, "_", series)
-		cell_type = md$cell_line[j]
-		label = md$label[j]
-		probe_label = md$probe_label[j]
+		cell_type = subt$cell_line[1]
+		label = subt$label[1]
+		probe_label = subt$probe_label[1]
 
 		# Log current status
 		cat(paste0("Working on ", flag, ".\n"))
