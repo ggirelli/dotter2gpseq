@@ -90,7 +90,7 @@ l2 = by(md, paste0(md$dataset, "~", md$series), FUN = function(subt) {
 	series = sprintf("%03d", subt$series[1])
 	flag = paste0(dataset, "_", series)
 	cell_type = subt$cell_line[1]
-	label = subt$label[1]
+	label = subt$set_label[1]
 	probe_label = subt$probe_label[1]
 
 	# Log current status
@@ -98,56 +98,69 @@ l2 = by(md, paste0(md$dataset, "~", md$series), FUN = function(subt) {
 
 	# Identify input folder and skip if missing ----------------------------
 	ipaths = paste0(indir, "/", flag)
-	l = lapply(ipaths, FUn = function(ipath) {
-		if( !dir.exists(ipath) ) {
-			cat(paste0("Warning: cannot find folder for ", flag,
-				". Skipped.\nFolder at: ", ipath, "\n"))
-			return(NULL)
-		}
-
+	l = lapply(ipaths, FUN = function(ipath) {
 		out = list()
+		out$good = T
+		out$partial = F
+
+		if ( !dir.exists(ipath) ) {
+			out$error = paste0("Warning: cannot find folder for ", flag,
+				". Skipped.\nFolder at: ", ipath, "\n")
+			out$good = F
+			return(out)
+		}
 
 		# Identify input files -------------------------------------------------
 		flist = list.files(ipath)
-		out[["nuclei"]] = flist[grepl("nuclei.out", flist)]
-		out[["dots"]] = flist[
+		out$nuclei = flist[grepl("nuclei.out", flist)]
+		out$dots = flist[
 			grepl("wCentr.out", flist) & ! grepl("noAllele", flist)]
-		
-		# Read input files
-		if( 0 == length(out[["nuclei"]]) ) {
-			out[["nuclei"]] = paste0("Warning: cannot find nuclei ",
-				"information in ", flag, ". Skipping ", dataset, ".\n")
+
+		if( 0 == length(out$nuclei) ) {
+			out$error = paste0("Warning: cannot find nuclei ",
+				"information in ", flag, ". Skipping ", dataset, ".\n",
+				"Folder: ", ipath)
+			out$good = F
+			out$partial = T
 		} else {
-			out[["nuclei"]] = read.delim(paste0(ipath, "/", out[["nuclei"]]),
+			out$nuclei = read.delim(paste0(ipath, "/", out$nuclei),
 				as.is = T, header = T)
 		}
-		if( 0 == length(out[["dots"]]) ) {
-			out[["dots"]] = paste0("Warning: cannot find dot information in ",
-				flag, ". Skipping ", dataset, ".\n")
+
+		if( 0 == length(out$dots) ) {
+			out$error = paste0("Warning: cannot find dot information in ",
+				flag, ". Skipping ", dataset, ".\n",
+				"Folder: ", ipath)
+			out$good = F
+			out$partial = T
 		} else {
-			out[["dots"]] = read.delim(paste0(ipath, "/", out[["dots"]]),
+			out$dots = read.delim(paste0(ipath, "/", out$dots),
 				as.is = T, header = T)
-			out[["dots"]]$Channel = tolower(out[["dots"]]$Channel)
+			out$dots$Channel = tolower(out$dots$Channel)
 		}
 
 		return(out)
+
 	})
-	lid = which(!is.null(l))
-	if ( 0 == length(lid) ) {
-		cat(paste0("Warning: cannot find information on dataset ",
-			dataset, " in any of the input directories."))
+
+	good = unlist(lapply(l, FUN = function(x) { x$good }))
+	if ( !any(good) ) {
+		partial = unlist(lapply(l, FUN = function(x) { x$partial }))
+		if ( any(partial) ) {
+			# Print error due to partial information present
+			cat(l[[which(partial)[1]]]$error)
+		} else {
+			# Print error due to not-found information
+			cat(paste0("Warning: cannot find information on dataset ",
+				dataset, " in any of the input directories.\n"))
+		}
+		# Stop evaluating current dataset
 		return(NULL)
-	} else {
-		dots = l[[lid]][["dots"]]
-		if ( !is.data.frame(dots) ) { cat(dots); dots = NULL }
-		nuclei = l[[lid]][["nuclei"]]
-		if ( !is.data.frame(nuclei) ) { cat(nuclei); NUCLEI = NULL }
 	}
 
-	# Skip if missing file
-	if( 0 == length(dots) | 0 == length(nuclei) ) {
-		return(NULL)
-	}
+	lid = which(good)[1]
+	dots = l[[lid]]$dots
+	nuclei = l[[lid]]$nuclei
 
 	# Add dataset, series and cell_type information ------------------------
 	dots$dataset = rep(dataset, nrow(dots))
@@ -194,29 +207,9 @@ l2 = l2[!is.null(l2)]
 
 # Output
 alleles = lapply(l2, FUN = function(x) x[[3]])
-return(list(
-	dots = do.call(rbind, lapply(l2, FUN = function(x) x[[1]])),
-	nuclei = do.call(rbind, lapply(l2, FUN = function(x) x[[2]])),
-	alleles = do.call(rbind, alleles[!is.null(alleles)])
-))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Merge
-dots = do.call(rbind, lapply(l1, FUN = function(x) x[[1]]))
-nuclei = do.call(rbind, lapply(l1, FUN = function(x) x[[2]]))
-alleles = do.call(rbind, lapply(l1, FUN = function(x) x[[3]]))
+dots = do.call(rbind, lapply(l2, FUN = function(x) x[[1]]))
+nuclei = do.call(rbind, lapply(l2, FUN = function(x) x[[2]]))
+alleles = do.call(rbind, alleles[!is.null(alleles)])
 
 # Write output
 if( !dir.exists(outdir) ) dir.create(outdir)
