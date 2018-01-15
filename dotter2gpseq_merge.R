@@ -4,11 +4,12 @@
 # 
 # Author: Gabriele Girelli
 # Email: gigi.ga90@gmail.com
-# Version: 1.1.0
+# Version: 2.0.0
 # Description:
 # 	merge output of dotter2gpseq.py and add dataset and cell_type information.
 # 
 # Changelog:
+#  v2.0.0 - requires only one metadata table.
 #  v1.1.0 - now supporting set/probe label columns in metadata.
 #  v1.0.0 - first implementation.
 # 
@@ -39,11 +40,11 @@ Example 2: output to "/home/user/out" directory.
 )
 
 # Define mandatory arguments
-parser = add_argument(parser, arg = '--meta', short = '-m', nargs = Inf,
-	help = paste0('List of metadata tables.',
+parser = add_argument(parser, arg = '--meta', short = '-m', nargs = 1,
+	help = paste0('Metadata table.',
 		' Needed columns: dataset, series, cell_line, set_label, probe_label.'))
 parser = add_argument(parser, arg = '--indir', short = '-i', nargs = Inf,
-	help = 'List of input folders, same order as metadata.')
+	help = 'List of input folders with dotter2gpseq output as subfolders.')
 parser = add_argument(parser, arg = '--outdir', short = '-o', nargs = 1,
 	help = 'Output folder, created if missing. Default to current one.',
 	default = ".")
@@ -58,140 +59,159 @@ p = parse_args(parser)
 attach(p['' != names(p)])
 
 # Additional checks
-if( 1 == length(meta) ) { if( is.na(meta) ) {
+if( is.na(meta) ) {
 	stop("at least one matadata table must be provided.")
-}}
+}
 if( 1 == length(indir) ) { if( is.na(indir) ) {
 	stop("at least one input directory must be provided.")
 }}
 if( is.na(outdir) ) {
 	stop("at least one output folder must be provided.")
 }
-if( length(meta) != length(indir)) {
-	stop("provided metadata and input directories do not match.")
-}
-
 # RUN ==========================================================================
 
-# Map metadata to input directory
-data = cbind(meta, indir)
+# Read metadata table
+md = read.delim(meta, as.is = T, header = T)
 
-# Iterate over cell types
-l1 = lapply(1:nrow(data), FUN = function(i) {
-	meta = data[i, 1]
-	indir = data[i, 2]
+# Check that all columns are present
+l0 = lapply(c("dataset", "series", "cell_line", "set_label", "probe_label"),
+	FUN = function(x) {
+	if( !x %in% colnames(md) ) {
+		stop(paste0("metadata missing the '", x, "' column.",
+			"\nFile at: ", meta))
+	}
+})
 
-	# Read metadata table
-	md = read.delim(meta, as.is = T, header = T)
+# Iterate through metadata
+l2 = by(md, paste0(md$dataset, "~", md$series), FUN = function(subt) {
 
-	# Check that all columns are present
-	l0 = lapply(c("dataset", "series", "cell_line", "set_label", "probe_label"),
-		FUN = function(x) {
-		if( !x %in% colnames(md) ) {
-			stop(paste0("metadata missing the '", x, "' column.",
-				"\nFile at: ", meta))
-		}
-	})
-	
-	# Iterate through metadata
-	l2 = by(md, paste0(md$dataset, "~", md$series), FUN = function(subt) {
-		# Extract dataset and series information -------------------------------
-		dataset = subt$dataset[1]
-		series = sprintf("%03d", subt$series[1])
-		flag = paste0(dataset, "_", series)
-		cell_type = subt$cell_line[1]
-		label = subt$label[1]
-		probe_label = subt$probe_label[1]
+	# Extract dataset and series information -------------------------------
+	dataset = subt$dataset[1]
+	series = sprintf("%03d", subt$series[1])
+	flag = paste0(dataset, "_", series)
+	cell_type = subt$cell_line[1]
+	label = subt$label[1]
+	probe_label = subt$probe_label[1]
 
-		# Log current status
-		cat(paste0("Working on ", flag, ".\n"))
+	# Log current status
+	cat(paste0("Working on ", flag, ".\n"))
 
-		# Identify input folder and skip if missing ----------------------------
-		ipath = paste0(indir, "/", flag)
+	# Identify input folder and skip if missing ----------------------------
+	ipaths = paste0(indir, "/", flag)
+	l = lapply(ipaths, FUn = function(ipath) {
 		if( !dir.exists(ipath) ) {
 			cat(paste0("Warning: cannot find folder for ", flag,
 				". Skipped.\nFolder at: ", ipath, "\n"))
 			return(NULL)
 		}
 
+		out = list()
+
 		# Identify input files -------------------------------------------------
 		flist = list.files(ipath)
-		nuclei = flist[grepl("nuclei.out", flist)]
-		dots = flist[grepl("wCentr.out", flist) & ! grepl("noAllele", flist)]
+		out[["nuclei"]] = flist[grepl("nuclei.out", flist)]
+		out[["dots"]] = flist[
+			grepl("wCentr.out", flist) & ! grepl("noAllele", flist)]
 		
 		# Read input files
-		if( 0 == length(nuclei) ) {
-			cat(paste0("Warning: cannot find nuclei information in ",
-				flag, ".\n"))
+		if( 0 == length(out[["nuclei"]]) ) {
+			out[["nuclei"]] = paste0("Warning: cannot find nuclei ",
+				"information in ", flag, ". Skipping ", dataset, ".\n")
 		} else {
-			nuclei = read.delim(paste0(ipath, "/", nuclei),
+			out[["nuclei"]] = read.delim(paste0(ipath, "/", out[["nuclei"]]),
 				as.is = T, header = T)
 		}
-		if( 0 == length(dots) ) {
-			cat(paste0("Warning: cannot find dot information in ",
-				flag, ".\n"))
+		if( 0 == length(out[["dots"]]) ) {
+			out[["dots"]] = paste0("Warning: cannot find dot information in ",
+				flag, ". Skipping ", dataset, ".\n")
 		} else {
-			dots = read.delim(paste0(ipath, "/", dots),
+			out[["dots"]] = read.delim(paste0(ipath, "/", out[["dots"]]),
 				as.is = T, header = T)
-			dots$Channel = tolower(dots$Channel)
+			out[["dots"]]$Channel = tolower(out[["dots"]]$Channel)
 		}
 
-		# Skip if missing file
-		if( 0 == length(dots) | 0 == length(nuclei) ) {
-			return(NULL)
-		}
-
-		# Add dataset, series and cell_type information ------------------------
-		dots$dataset = rep(dataset, nrow(dots))
-		dots$label = rep(label, nrow(dots))
-		dots$probe_label = rep(probe_label, nrow(dots))
-		dots$cell_type = rep(cell_type, nrow(dots))
-		nuclei$dataset = rep(dataset, nrow(nuclei))
-		nuclei$cell_type = rep(cell_type, nrow(nuclei))
-
-		# Prepare allele by channel table --------------------------------------
-		aldata = as.numeric(dots$Allele)
-		aldata = dots[0 < aldata & !is.na(aldata),]
-		if( 0 != nrow(aldata) ) {
-			aldata$universal = paste(
-				aldata$File, aldata$Channel, aldata$cell_ID, sep = "~")
-			alleles = do.call(rbind, by(aldata, aldata$universal,
-				FUN = function(subt) {
-				d = subt[1, c("File", "Channel", "cell_ID", "G1")]
-				d_3d = subt[1, c("x", "y", "z")] - subt[2, c("x", "y", "z")]
-				d$d_3d = sqrt(sum(((d_3d) * aspect)^2))
-				d$d_lamin = abs(diff(subt$lamin_dist))
-				d$d_lamin_norm = abs(diff(subt$lamin_dist_norm))
-				d$d_centr = abs(diff(subt$centr_dist))
-				d$d_centr_norm = abs(diff(subt$centr_dist_norm))
-				d$angle = subt$angle[1]
-				d$dataset = dataset
-				d$label = label
-				d$probe_label = probe_label
-				d$cell_type = cell_type
-				return(d)
-			}))
-			rownames(alleles) = c()
-		} else {
-			cat(paste0("Warning: no allele couples found in ", flag, ".\n"))
-			alleles = NULL
-		}
-
-		# Output ---------------------------------------------------------------
-		return(list(dots = dots, nuclei = nuclei, alleles = alleles))
+		return(out)
 	})
+	lid = which(!is.null(l))
+	if ( 0 == length(lid) ) {
+		cat(paste0("Warning: cannot find information on dataset ",
+			dataset, " in any of the input directories."))
+		return(NULL)
+	} else {
+		dots = l[[lid]][["dots"]]
+		if ( !is.data.frame(dots) ) { cat(dots); dots = NULL }
+		nuclei = l[[lid]][["nuclei"]]
+		if ( !is.data.frame(nuclei) ) { cat(nuclei); NUCLEI = NULL }
+	}
 
-	# Remove skipped
-	l2 = l2[!is.null(l2)]
+	# Skip if missing file
+	if( 0 == length(dots) | 0 == length(nuclei) ) {
+		return(NULL)
+	}
 
-	# Output
-	alleles = lapply(l2, FUN = function(x) x[[3]])
-	return(list(
-		dots = do.call(rbind, lapply(l2, FUN = function(x) x[[1]])),
-		nuclei = do.call(rbind, lapply(l2, FUN = function(x) x[[2]])),
-		alleles = do.call(rbind, alleles[!is.null(alleles)])
-	))
+	# Add dataset, series and cell_type information ------------------------
+	dots$dataset = rep(dataset, nrow(dots))
+	dots$label = rep(label, nrow(dots))
+	dots$probe_label = rep(probe_label, nrow(dots))
+	dots$cell_type = rep(cell_type, nrow(dots))
+	nuclei$dataset = rep(dataset, nrow(nuclei))
+	nuclei$cell_type = rep(cell_type, nrow(nuclei))
+
+	# Prepare allele by channel table --------------------------------------
+	aldata = as.numeric(dots$Allele)
+	aldata = dots[0 < aldata & !is.na(aldata),]
+	if( 0 != nrow(aldata) ) {
+		aldata$universal = paste(
+			aldata$File, aldata$Channel, aldata$cell_ID, sep = "~")
+		alleles = do.call(rbind, by(aldata, aldata$universal,
+			FUN = function(subt) {
+			d = subt[1, c("File", "Channel", "cell_ID", "G1")]
+			d_3d = subt[1, c("x", "y", "z")] - subt[2, c("x", "y", "z")]
+			d$d_3d = sqrt(sum(((d_3d) * aspect)^2))
+			d$d_lamin = abs(diff(subt$lamin_dist))
+			d$d_lamin_norm = abs(diff(subt$lamin_dist_norm))
+			d$d_centr = abs(diff(subt$centr_dist))
+			d$d_centr_norm = abs(diff(subt$centr_dist_norm))
+			d$angle = subt$angle[1]
+			d$dataset = dataset
+			d$label = label
+			d$probe_label = probe_label
+			d$cell_type = cell_type
+			return(d)
+		}))
+		rownames(alleles) = c()
+	} else {
+		cat(paste0("Warning: no allele couples found in ", flag, ".\n"))
+		alleles = NULL
+	}
+
+	# Output ---------------------------------------------------------------
+	return(list(dots = dots, nuclei = nuclei, alleles = alleles))
 })
+
+# Remove skipped
+l2 = l2[!is.null(l2)]
+
+# Output
+alleles = lapply(l2, FUN = function(x) x[[3]])
+return(list(
+	dots = do.call(rbind, lapply(l2, FUN = function(x) x[[1]])),
+	nuclei = do.call(rbind, lapply(l2, FUN = function(x) x[[2]])),
+	alleles = do.call(rbind, alleles[!is.null(alleles)])
+))
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # Merge
 dots = do.call(rbind, lapply(l1, FUN = function(x) x[[1]]))
