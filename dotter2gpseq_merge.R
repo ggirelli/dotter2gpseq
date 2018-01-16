@@ -4,11 +4,12 @@
 # 
 # Author: Gabriele Girelli
 # Email: gigi.ga90@gmail.com
-# Version: 2.0.0
+# Version: 2.0.1
 # Description:
 # 	merge output of dotter2gpseq.py and add dataset and cell_type information.
 # 
 # Changelog:
+#  v2.0.1 - fixed probe name assignment.
 #  v2.0.0 - requires only one metadata table.
 #  v1.1.0 - now supporting set/probe label columns in metadata.
 #  v1.0.0 - first implementation.
@@ -31,10 +32,10 @@ dataset_series, with series being in XXX format with leading zeros. Please, note
 that the channel is enforced as lower-case by the merge operation.
 
 Example 1: output in current directory.
-./merge_data.R -m meta_HAP1.tsv meta_IMR90.tsv -i HAP1/dots_auto IMR90/dots_auto
+./merge_data.R -m meta.tsv -i HAP1/dots_auto IMR90/dots_auto
 
 Example 2: output to "/home/user/out" directory.
-./merge_data.R -m meta_HAP1.tsv meta_IMR90.tsv -i HAP1/dots_auto IMR90/dots_auto
+./merge_data.R -m meta.tsv -i HAP1/dots_auto IMR90/dots_auto
 	-o /home/user/out',
 	name = 'dotter2gpseq_merge.R'
 )
@@ -91,7 +92,6 @@ l2 = by(md, paste0(md$dataset, "~", md$series), FUN = function(subt) {
 	flag = paste0(dataset, "_", series)
 	cell_type = subt$cell_line[1]
 	label = subt$set_label[1]
-	probe_label = subt$probe_label[1]
 
 	# Log current status
 	cat(paste0("Working on ", flag, ".\n"))
@@ -165,7 +165,7 @@ l2 = by(md, paste0(md$dataset, "~", md$series), FUN = function(subt) {
 	# Add dataset, series and cell_type information ------------------------
 	dots$dataset = rep(dataset, nrow(dots))
 	dots$label = rep(label, nrow(dots))
-	dots$probe_label = rep(probe_label, nrow(dots))
+	dots$probe_label = subt$probe_label[match(dots$Channel, subt$channel)]
 	dots$cell_type = rep(cell_type, nrow(dots))
 	nuclei$dataset = rep(dataset, nrow(nuclei))
 	nuclei$cell_type = rep(cell_type, nrow(nuclei))
@@ -188,7 +188,7 @@ l2 = by(md, paste0(md$dataset, "~", md$series), FUN = function(subt) {
 			d$angle = subt$angle[1]
 			d$dataset = dataset
 			d$label = label
-			d$probe_label = probe_label
+			d$probe_label = subt$probe_label[1]
 			d$cell_type = cell_type
 			return(d)
 		}))
