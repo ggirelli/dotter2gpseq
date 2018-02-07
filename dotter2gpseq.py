@@ -5,12 +5,13 @@
 # 
 # Author: Gabriele Girelli
 # Email: gigi.ga90@gmail.com
-# Version: 3.1.1
+# Version: 3.2.1
 # Date: 20170718
 # Project: GPSeq
 # Description: Calculate radial position of dots in cells
 # 
 # Changelog:
+#  v3.2.1 - 20180207: discarding rows from input table for skipped FoVs.
 #  v3.2.0 - 20171212: fixed G1 selection in output table.
 #  v3.1.1 - 20171206: fixed allele polarity, using correct center of mass.
 #  v3.1.0 - 20171204: fixed allele polarity including aspect ratio.
@@ -746,6 +747,7 @@ for i in set(t['File']):
     if not 0 == len(imsel):
         imfov[i] = imsel[0]
     else:
+        t = t.iloc[t["File"] != i, :]
         print("  Missing image for field #%d, skipped." % (i,))
 
 # Start iteration --------------------------------------------------------------
