@@ -747,7 +747,7 @@ for i in set(t['File']):
     if not 0 == len(imsel):
         imfov[i] = imsel[0]
     else:
-        t = t.iloc[t["File"] != i, :]
+        t = t.ix[t["File"] != i, :]
         print("  Missing image for field #%d, skipped." % (i,))
 
 # Start iteration --------------------------------------------------------------
