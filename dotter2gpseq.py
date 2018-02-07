@@ -11,6 +11,7 @@
 # Description: Calculate radial position of dots in cells
 # 
 # Changelog:
+#  v3.2.2 - 20180207: set angle to 0 when one point overlaps to the nucleus CoM.
 #  v3.2.1 - 20180207: discarding rows from input table for skipped FoVs.
 #  v3.2.0 - 20171212: fixed G1 selection in output table.
 #  v3.1.1 - 20171206: fixed allele polarity, using correct center of mass.
@@ -749,6 +750,7 @@ for i in set(t['File']):
     else:
         t = t.ix[t["File"] != i, :]
         print("  Missing image for field #%d, skipped." % (i,))
+t.index = range(t.shape[0])
 
 # Start iteration --------------------------------------------------------------
 
@@ -822,13 +824,19 @@ for uid in subt['universalID']:
     # Re-order center of mass coordinates
     centr_coords = centr_coords[[1, 2, 0]]
 
-    # Calculate angle
-    xyz_aspect = np.array((ax, ay, az))
-    t.loc[idx, 'angle'] = angle_between_points(
-        focus.loc[focus.index[0],:] * xyz_aspect,
-        centr_coords * xyz_aspect,
-        focus.loc[focus.index[1],:] * xyz_aspect
-    )
+    P1_coords = focus.loc[focus.index[0],:]
+    P2_coords = focus.loc[focus.index[1],:]
+
+    if all(P2_coords == centr_coords) or all(P1_coords == centr_coords):
+        t.loc[idx, 'angle'] = 0
+    else:
+        # Calculate angle
+        xyz_aspect = np.array((ax, ay, az))
+        t.loc[idx, 'angle'] = angle_between_points(
+            P1_coords * xyz_aspect,
+            centr_coords * xyz_aspect,
+            P2_coords * xyz_aspect
+        )
     t.loc[idx, 'com'] = "_".join([str(x) for x in centr_coords.tolist()])
 
 # Remove universal ID
