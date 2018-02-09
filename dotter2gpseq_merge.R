@@ -215,7 +215,7 @@ alleles = do.call(rbind, alleles[!is.null(alleles)])
 if( !dir.exists(outdir) ) dir.create(outdir)
 write.table(dots, paste0(outdir, "/", Sys.Date(), "_dots.merged.tsv"),
 	col.names = T, row.names = F, quote = F, sep = "\t")
-write.table(alleles, paste0(outdir, "/", Sys.Date(), "_alleles.merged.tsv"),
+write.table(alleles, paste0(outdir, "/", Sys.Date(), "_copies.merged.tsv"),
 	col.names = T, row.names = F, quote = F, sep = "\t")
 write.table(nuclei, paste0(outdir, "/", Sys.Date(), "_nuclei.merged.tsv"),
 	col.names = T, row.names = F, quote = F, sep = "\t")
