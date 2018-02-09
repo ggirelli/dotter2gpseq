@@ -4,11 +4,12 @@
 # 
 # Author: Gabriele Girelli
 # Email: gigi.ga90@gmail.com
-# Version: 2.0.1
+# Version: 2.1.0
 # Description:
 # 	merge output of dotter2gpseq.py and add dataset and cell_type information.
 # 
 # Changelog:
+#  v2.1.0 180209 - changed terminology in output, copy instead of allele.
 #  v2.0.1 - fixed probe name assignment.
 #  v2.0.0 - requires only one metadata table.
 #  v1.1.0 - now supporting set/probe label columns in metadata.
