@@ -11,6 +11,7 @@
 # Description: Calculate radial position of dots in cells
 # 
 # Changelog:
+#  v3.3.0 - 20180219: input can now be already binarized.
 #  v3.2.2 - 20180207: set angle to 0 when one point overlaps to the nucleus CoM.
 #  v3.2.1 - 20180207: discarding rows from input table for skipped FoVs.
 #  v3.2.0 - 20171212: fixed G1 selection in output table.
@@ -96,6 +97,10 @@ parser.add_argument('-t', '--threads', type = int, nargs = 1,
     default = [1])
 
 # Add flags
+parser.add_argument('-M', '--already-masked',
+    action = 'store_const', dest = 'masked',
+    const = True, default = False,
+    help = 'Input images are binary (i.e., masks): skip segmentation.')
 parser.add_argument('--noplot',
     action = 'store_const', dest = 'noplot',
     const = True, default = False,
@@ -117,6 +122,7 @@ aspect = args.aspect
 (az, ay, ax) = aspect
 outdir = args.outFolder[0]
 delim = args.delim[0]
+already_masked = args.masked
 noplot = args.noplot
 dilate_factor = args.dilate[0]
 ncores = args.threads[0]
@@ -592,7 +598,7 @@ def angle_between_points( p0, c, p1 ):
     return(tetha / math.pi * 180)
 
 def analyze_field_of_view(ii, imfov, imdir, an_type, seg_type,
-    maskdir, dilate_factor, aspect, t):
+    maskdir, dilate_factor, aspect, t, already_masked):
     # Logger for logpath
     logger = iot.IOinterface()
 
@@ -623,14 +629,19 @@ def analyze_field_of_view(ii, imfov, imdir, an_type, seg_type,
         im = im[0]
 
     # Binarize image -----------------------------------------------------------
-    msg += "   - Binarizing...\n"
-    binarization = gp.tools.binarize.Binarize(
-        an_type=an_type,
-        seg_type=seg_type,
-        verbose = False
-    )
-    (imbin, thr, log) = binarization.run(im)
-    msg += log
+    if already_masked:
+        msg += "   - Skipped binarization.\n"
+        imbin = im
+        thr = 0
+    else:
+        msg += "   - Binarizing...\n"
+        binarization = gp.tools.binarize.Binarize(
+            an_type=an_type,
+            seg_type=seg_type,
+            verbose = False
+        )
+        (imbin, thr, log) = binarization.run(im)
+        msg += log
 
     # Find nuclei --------------------------------------------------------------
     msg += "   - Retrieving nuclei...\n"
@@ -761,7 +772,8 @@ nuclei = []
 kwargs = {
     'imfov' : imfov, 'imdir' : imdir,
     'an_type' : an_type, 'seg_type' : seg_type, 'maskdir' : maskdir,
-    'dilate_factor' : dilate_factor, 'aspect' : aspect, 't' : t
+    'dilate_factor' : dilate_factor, 'aspect' : aspect, 't' : t,
+    'already_masked' : already_masked
 }
 anData = Parallel(n_jobs = ncores)(
     delayed(analyze_field_of_view)(ii, **kwargs)
@@ -821,6 +833,7 @@ for uid in subt['universalID']:
 
     # Nucleus center of mass coordinates
     centr_coords = (nucleus.box_mass_center + nucleus.box_origin).astype('i')
+    
     # Re-order center of mass coordinates
     centr_coords = centr_coords[[1, 2, 0]]
 
