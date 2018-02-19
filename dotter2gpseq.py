@@ -107,7 +107,7 @@ parser.add_argument('--noplot',
     help = 'Do not produce any plots.')
 
 # Version flag
-version = "3.2.1"
+version = "3.3.0"
 parser.add_argument('--version', action = 'version',
     version = '%s v%s' % (sys.argv[0], version,))
 
