@@ -5,12 +5,13 @@
 # 
 # Author: Gabriele Girelli
 # Email: gigi.ga90@gmail.com
-# Version: 3.2.1
+# Version: 3.4.0
 # Date: 20170718
 # Project: GPSeq
 # Description: Calculate radial position of dots in cells
 # 
 # Changelog:
+#  v3.4.0 - 20180220: segmented cells as additional input.
 #  v3.3.0 - 20180219: input can now be already binarized.
 #  v3.2.2 - 20180207: set angle to 0 when one point overlaps to the nucleus CoM.
 #  v3.2.1 - 20180207: discarding rows from input table for skipped FoVs.
@@ -66,12 +67,22 @@ from pygpseq.tools import stat as stt
 
 # Add script description
 parser = argparse.ArgumentParser(description = '''
-Calculate radial position of dots in cells. The G1 selection is actually a
-selection of the most represented cell sub-population based on flatten area and
-integral of DNA stain intensity. In other words, it will selected the most
-represented cell cycle phase in your cell population (generally, G1). Images
-are expected to follow DOTTER filename notation: "channel_series.tif".
-''')
+Calculate radial position of dots in cells.
+
+The G1 selection is actually a selection of the most represented cell sub-
+-population based on flatten area and integral of DNA stain intensity. In other
+words, it will selected the most represented cell cycle phase in your cell
+population (generally, G1). Images are expected to follow DOTTER filename
+notation: "channel_series.tif".
+
+If you already segmented your images (i.e., produced masks), provide the path to
+the folder containing the masks using -m, and the prefix for the mask name with
+-m. For example, with '-m /ex/mask_dir/ -M mask_', in the case of the image
+file '1.tif', the script will look for the mask at "/ex/mask_dir/mask_1.tif".
+If the mask can be found, it will be used, otherwise it will be generated and
+then saved. This can be used also to export masks as tifs to the folder
+specified with -m.
+''', formatter_class = argparse.RawDescriptionHelpFormatter)
 
 # Add mandatory arguments
 parser.add_argument('dotCoords', type = str, nargs = 1,
@@ -95,19 +106,22 @@ parser.add_argument('--dilate', type = int, nargs = 1,
 parser.add_argument('-t', '--threads', type = int, nargs = 1,
     help = """Number of threads for parallelization. Default: 1""",
     default = [1])
+parser.add_argument('-m', '--mask-folder', type = str, nargs = 1,
+    help = """Path to folder containing binarized/labeled images.
+    Masks will be saved to this folder if missing.""",
+    default = [None])
+parser.add_argument('-M', '--mask-prefix', type = str, nargs = 1,
+    help = """Prefix for mask selection. Default: 'mask_'.""",
+    default = ["mask_"])
 
 # Add flags
-parser.add_argument('-M', '--already-masked',
-    action = 'store_const', dest = 'masked',
-    const = True, default = False,
-    help = 'Input images are binary (i.e., masks): skip segmentation.')
 parser.add_argument('--noplot',
     action = 'store_const', dest = 'noplot',
     const = True, default = False,
     help = 'Do not produce any plots.')
 
 # Version flag
-version = "3.3.0"
+version = "3.4.0"
 parser.add_argument('--version', action = 'version',
     version = '%s v%s' % (sys.argv[0], version,))
 
@@ -122,7 +136,8 @@ aspect = args.aspect
 (az, ay, ax) = aspect
 outdir = args.outFolder[0]
 delim = args.delim[0]
-already_masked = args.masked
+mask_iodir = args.mask_folder[0]
+maskpre = args.mask_prefix[0]
 noplot = args.noplot
 dilate_factor = args.dilate[0]
 ncores = args.threads[0]
@@ -470,6 +485,10 @@ def flag_G1_cells(t, nuclei, outdir, dilate_factor, dot_file_name):
     summary.loc[g1ids, 'G1'] = 1
     summary = summary.drop('universalID', 1)
 
+    # Estimate radius ----------------------------------------------------------
+    summary['sphere_radius'] = summary['size'].values * 3 / (4 * math.pi)
+    summary['sphere_radius'] = (summary['sphere_radius'])**(1/3.)
+
     # Export -------------------------------------------------------------------
 
     # Export feature ranges
@@ -598,13 +617,12 @@ def angle_between_points( p0, c, p1 ):
     return(tetha / math.pi * 180)
 
 def analyze_field_of_view(ii, imfov, imdir, an_type, seg_type,
-    maskdir, dilate_factor, aspect, t, already_masked):
+    maskdir, dilate_factor, aspect, t, main_mask_dir, main_mask_prefix):
     # Logger for logpath
     logger = iot.IOinterface()
 
     idx = ii
     impath = imfov[ii]
-    print("  Started '%s' job..." % (impath,))
     msg = "> Job '%s'...\n" % (impath,)
     subt_idx = np.where(t['File'] == idx)[0]
 
@@ -629,18 +647,20 @@ def analyze_field_of_view(ii, imfov, imdir, an_type, seg_type,
         im = im[0]
 
     # Binarize image -----------------------------------------------------------
-    if already_masked:
-        msg += "   - Skipped binarization.\n"
-        imbin = im
+    binarization = gp.tools.binarize.Binarize(
+        an_type = an_type, seg_type = seg_type, verbose = False)
+    
+    mpath = os.path.join(main_mask_dir, main_mask_prefix + impath)
+    if os.path.isfile(mpath):
+        msg += "   - Skipped binarization, using provided mask.\n"
+        imbin = io.imread(mpath)
         thr = 0
     else:
         msg += "   - Binarizing...\n"
-        binarization = gp.tools.binarize.Binarize(
-            an_type=an_type,
-            seg_type=seg_type,
-            verbose = False
-        )
         (imbin, thr, log) = binarization.run(im)
+        if os.path.isdir(main_mask_dir):
+            msg += "   >>> Exporting mask as tif...\n"
+            io.imsave(mpath, imbin.astype('u4'))
         msg += log
 
     # Find nuclei --------------------------------------------------------------
@@ -773,9 +793,9 @@ kwargs = {
     'imfov' : imfov, 'imdir' : imdir,
     'an_type' : an_type, 'seg_type' : seg_type, 'maskdir' : maskdir,
     'dilate_factor' : dilate_factor, 'aspect' : aspect, 't' : t,
-    'already_masked' : already_masked
+    'main_mask_dir' : mask_iodir, 'main_mask_prefix' : maskpre
 }
-anData = Parallel(n_jobs = ncores)(
+anData = Parallel(n_jobs = ncores, verbose = 11)(
     delayed(analyze_field_of_view)(ii, **kwargs)
     for ii in set(imfov.keys()))
 for (curnuclei, subt, subt_idx) in anData:
