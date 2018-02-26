@@ -5,12 +5,13 @@
 # 
 # Author: Gabriele Girelli
 # Email: gigi.ga90@gmail.com
-# Version: 3.4.1
+# Version: 3.4.2
 # Date: 20170718
 # Project: GPSeq
 # Description: Calculate radial position of dots in cells
 # 
 # Changelog:
+#  v3.4.2 - 20180226: now enforcing round integer coordinates.
 #  v3.4.1 - 20180226: fixed bug occurring when mask folder was not provided.
 #  v3.4.0 - 20180220: segmented cells as additional input.
 #  v3.3.0 - 20180219: input can now be already binarized.
@@ -122,7 +123,7 @@ parser.add_argument('--noplot',
     help = 'Do not produce any plots.')
 
 # Version flag
-version = "3.4.1"
+version = "3.4.2"
 parser.add_argument('--version', action = 'version',
     version = '%s v%s' % (sys.argv[0], version,))
 
@@ -773,6 +774,12 @@ t['version'] = version
 
 # Extract FoV number
 t['File'] = [int(f.split('/')[-1].split('.')[0]) for f in t['File']]
+
+# Round up coordinates !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! NEEDS TO BE CHANGE TO INTERPOLATE
+t['x'] = np.round(t['x'])
+t['y'] = np.round(t['y'])
+t['z'] = np.round(t['z'])
 
 # Identify tiff images
 flist = []
