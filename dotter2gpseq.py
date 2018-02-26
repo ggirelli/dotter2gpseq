@@ -11,6 +11,7 @@
 # Description: Calculate radial position of dots in cells
 # 
 # Changelog:
+#  v3.4.1 - 20180226: fixed bug occurring when mask folder was not provided.
 #  v3.4.0 - 20180220: segmented cells as additional input.
 #  v3.3.0 - 20180219: input can now be already binarized.
 #  v3.2.2 - 20180207: set angle to 0 when one point overlaps to the nucleus CoM.
@@ -650,17 +651,25 @@ def analyze_field_of_view(ii, imfov, imdir, an_type, seg_type,
     binarization = gp.tools.binarize.Binarize(
         an_type = an_type, seg_type = seg_type, verbose = False)
     
-    mpath = os.path.join(main_mask_dir, main_mask_prefix + impath)
-    if os.path.isfile(mpath):
+    # Check if already segmented
+    already_segmented = False
+    if not type(None) == type(main_mask_dir):
+        mpath = os.path.join(main_mask_dir, main_mask_prefix + impath)
+        if os.path.isfile(mpath):
+            already_segmented = True
+
+    # Skip or binarize
+    if already_segmented:
         msg += "   - Skipped binarization, using provided mask.\n"
         imbin = io.imread(mpath)
         thr = 0
     else:
         msg += "   - Binarizing...\n"
         (imbin, thr, log) = binarization.run(im)
-        if os.path.isdir(main_mask_dir):
-            msg += "   >>> Exporting mask as tif...\n"
-            io.imsave(mpath, imbin.astype('u4'))
+        if not type(None) == type(main_mask_dir):
+            if os.path.isdir(main_mask_dir):
+                msg += "   >>> Exporting mask as tif...\n"
+                io.imsave(mpath, imbin.astype('u4'))
         msg += log
 
     # Find nuclei --------------------------------------------------------------
