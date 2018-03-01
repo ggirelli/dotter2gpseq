@@ -562,7 +562,7 @@ def ortho_3d(coords, scale = None, dot_coords = None, c = None):
 	if not type(None) == type(dot_coords):
 		plt.plot(dot_coords[2], dot_coords[1], 'r.')
 	if not type(None) == type(c):
-		plt.axhline(0, color = 'b', linestyle = ":")
+		plt.axvline(0, color = 'b', linestyle = ":")
 
 	plt.subplot(2, 2, 3)
 	plt.plot([xv[0]*-scale*3, xv[0]*scale*3],
@@ -664,7 +664,10 @@ def annotate_compartments(msg, t, nuclei, outdir):
 			xv, yv, zv = extract_3ev(tcoords)
 			theta3 = calc_theta(xv[2], zv[2])
 			if np.abs(theta3) > np.pi / 2.:
-				theta3 = np.abs(theta3 + np.pi / 2.)
+				if theta3 > 0:
+					theta3 = -np.abs(theta3 - np.pi / 2.)
+				else:
+					theta3 = np.abs(theta3 + np.pi / 2.)
 			else:
 				theta3 = -np.abs(theta3 + np.pi / 2.)
 			xt, yt, zt = rotate3d(tcoords, theta3, 1)
