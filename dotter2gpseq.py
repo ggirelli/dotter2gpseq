@@ -827,7 +827,8 @@ def flag_G1_cells(t, nuclei, outdir, dilate_factor, dot_file_name):
 
 	# Check which dots are in which nucleus and update flag --------------------
 	print("   > Matching DOTTER cells with GPSeq cells...")
-	t['G1'] = np.zeros((t.shape[0],))
+	t['G1'] = 0
+	t.loc[np.where(np.isnan(t['cell_ID']))[0], 'G1'] = np.nan
 	t['universalID'] =  ["_%s.%s_" % x for x in zip(
 		t['File'].values, t['cell_ID'].values
 	)]
@@ -906,61 +907,62 @@ def add_allele(data):
 
 	# Universal index and dots in cells ----------------------------------------
 
+	# Default value of np.nan for dots outside of nuclei
+	data['Allele'] = np.nan
+
 	# Identify dots within cells
-	validIdx = np.nonzero(data['cell_ID'])[0]
+	validIdx = np.where(np.logical_not(np.isnan(data['cell_ID'])))[0]
+	subt = data.loc[validIdx, :]
 
 	# Assemble universal index
-	data['universalID'] =  ["%s_%s_%s" % t for t in zip(
-		data['File'].values, data['Channel'].values, data['cell_ID'].values
+	subt['universalID'] =  ["%s_%s_%s" % t for t in zip(
+		subt['File'].values, subt['Channel'].values, subt['cell_ID'].values
 	)]
 
 	# Count dots per universalID
-	uID,  uCount = np.unique(data.loc[validIdx, 'universalID'],
+	uID,  uCount = np.unique(subt.loc[validIdx, 'universalID'],
 		return_index = False, return_counts = True)
-	IDmap = zip(data.loc[validIdx, 'universalID'],
+	IDmap = zip(subt.loc[validIdx, 'universalID'],
 		[dict(zip(uID, uCount))[ID]
-		for ID in data.loc[validIdx, 'universalID']])
+		for ID in subt.loc[validIdx, 'universalID']])
 	IDmap = np.array(list(IDmap))
 	
-	# Stop if now dots are inside a cell
+	# Stop if no dots are inside a cell
 	if 0 == sum(IDmap.shape):
-		data['Allele'] = ''
-		return(data.drop('universalID', 1))
+		return(data)
 
 	# Fill Allele column -------------------------------------------------------
-	
-	# Default value of np.nan for dots outside of nuclei
-	data['Allele'] = np.nan
 
 	# -1 if more than 2 dots
 	cond = IDmap[:,1].astype('i') > 2
 	if 0 != sum(cond):
-		data.loc[validIdx[cond], 'Allele'] = -1
+		subt.loc[validIdx[cond], 'Allele'] = -1
 
 	#  0 if less than 2 dots
 	cond = IDmap[:,1].astype('i') == 1
 	if 0 != sum(cond):
-		data.loc[validIdx[cond], 'Allele'] = 0
+		subt.loc[validIdx[cond], 'Allele'] = 0
 
 	# Iterate over 2-dots cases
 	cond = IDmap[:,1].astype('i') == 2
 	if 0 != sum(cond):
 		uID = np.unique(IDmap[cond, 0]).tolist()
 		for ID in uID:
-			dotPair = data.loc[data['universalID'] == ID, :]
+			dotPair = subt.loc[subt['universalID'] == ID, :]
 			ldn = dotPair['lamin_dist_norm'].tolist()
 			if ldn[0] == ldn[1]:
 				# Same centrality
-				data.loc[dotPair.index[0], 'Allele'] = 1 # Central
-				data.loc[dotPair.index[1], 'Allele'] = 2 # Peripheral
+				subt.loc[dotPair.index[0], 'Allele'] = 1 # Central
+				subt.loc[dotPair.index[1], 'Allele'] = 2 # Peripheral
 			else: # Different centrality
 				# Peripheral
-				data.loc[dotPair['lamin_dist_norm'].argmin(), 'Allele'] = 2
+				subt.loc[dotPair['lamin_dist_norm'].argmin(), 'Allele'] = 2
 				# Central
-				data.loc[dotPair['lamin_dist_norm'].argmax(), 'Allele'] = 1
+				subt.loc[dotPair['lamin_dist_norm'].argmax(), 'Allele'] = 1
 
 	# Output -------------------------------------------------------------------
-	return(data.drop('universalID', 1))
+	data.loc[validIdx, 'Allele'] = subt['Allele']
+	return(data)
 
 def angle_between_points( p0, c, p1 ):
 	'''
