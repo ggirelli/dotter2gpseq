@@ -5,13 +5,13 @@
 # 
 # Author: Gabriele Girelli
 # Email: gigi.ga90@gmail.com
-# Version: 4.0.0dev
+# Version: 4.0.0
 # Date: 20170718
 # Project: GPSeq
 # Description: Calculate radial position of dots in cells
 # 
 # Changelog:
-#  v4.0.0 -         : added compartmentalization for ellipsoidal nuclei.
+#  v4.0.0 - 20180301: added compartmentalization for ellipsoidal nuclei.
 #                     Default cell values is now standardize to NaN.
 #  v3.4.2 - 20180226: now enforcing round integer coordinates.
 #  v3.4.1 - 20180226: fixed bug occurring when mask folder was not provided.
@@ -146,7 +146,7 @@ parser.add_argument('--no-compartment-plot',
 	help = 'Do not produce compartments-related plots.')
 
 # Version flag
-version = "4.0.0dev"
+version = "4.0.0"
 parser.add_argument('--version', action = 'version',
 	version = '%s v%s' % (sys.argv[0], version,))
 
