@@ -11,6 +11,7 @@
 # Description: Calculate radial position of dots in cells
 # 
 # Changelog:
+#  v4.0.1 - 20180301: fixed rotation order.
 #  v4.0.0 - 20180301: added compartmentalization for ellipsoidal nuclei.
 #                     Default cell values is now standardize to NaN.
 #  v3.4.2 - 20180226: now enforcing round integer coordinates.
@@ -146,7 +147,7 @@ parser.add_argument('--no-compartment-plot',
 	help = 'Do not produce compartments-related plots.')
 
 # Version flag
-version = "4.0.0"
+version = "4.0.1"
 parser.add_argument('--version', action = 'version',
 	version = '%s v%s' % (sys.argv[0], version,))
 
@@ -654,12 +655,6 @@ def annotate_compartments(msg, t, nuclei, outdir):
 			xt, yt, zt = rotate3d(coords, theta1, 2)
 			tcoords = np.vstack([xt, yt, zt])
 
-			# Second axis
-			xv, yv, zv = extract_3ev(tcoords)
-			theta2 = calc_theta(yv[1], zv[1])
-			xt, yt, zt = rotate3d(tcoords, theta2, 0)
-			tcoords = np.vstack([xt, yt, zt])
-
 			# Third axis
 			xv, yv, zv = extract_3ev(tcoords)
 			theta3 = calc_theta(xv[2], zv[2])
@@ -671,6 +666,12 @@ def annotate_compartments(msg, t, nuclei, outdir):
 			else:
 				theta3 = -np.abs(theta3 + np.pi / 2.)
 			xt, yt, zt = rotate3d(tcoords, theta3, 1)
+			tcoords = np.vstack([xt, yt, zt])
+
+			# Second axis
+			xv, yv, zv = extract_3ev(tcoords)
+			theta2 = calc_theta(yv[1], zv[1])
+			xt, yt, zt = rotate3d(tcoords, theta2, 0)
 			tcoords = np.vstack([xt, yt, zt])
 
 			# Fit ellipsoid ----------------------------------------------------
