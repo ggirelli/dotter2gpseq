@@ -5,12 +5,13 @@
 # 
 # Author: Gabriele Girelli
 # Email: gigi.ga90@gmail.com
-# Version: 4.0.0
+# Version: 4.1.0
 # Date: 20170718
 # Project: GPSeq
 # Description: Calculate radial position of dots in cells
 # 
 # Changelog:
+#  v4.1.0 - 20180302: added compatibility to compressed tiff files.
 #  v4.0.1 - 20180301: fixed rotation order.
 #  v4.0.0 - 20180301: added compartmentalization for ellipsoidal nuclei.
 #                     Default cell values is now standardize to NaN.
@@ -57,6 +58,7 @@ import os
 import pandas as pd
 import pickle
 import sys
+import tifffile
 
 from scipy.ndimage.measurements import center_of_mass
 from scipy.ndimage.morphology import distance_transform_edt
@@ -133,6 +135,14 @@ parser.add_argument('-M', '--mask-prefix', type = str, nargs = 1,
 	default = ["mask_"])
 
 # Add flags
+parser.add_argument('--labeled',
+    action = 'store_const', dest = 'labeled',
+    const = True, default = False,
+    help = 'Export labeled masks instead of binary.')
+parser.add_argument('--compressed',
+    action = 'store_const', dest = 'compressed',
+    const = True, default = False,
+    help = 'Generate compressed TIF binary masks (not compatible with ImageJ.')
 parser.add_argument('--annotate-compartments',
 	action = 'store_const', dest = 'do_annotate_compartments',
 	const = True, default = False,
@@ -147,7 +157,7 @@ parser.add_argument('--no-compartment-plot',
 	help = 'Do not produce compartments-related plots.')
 
 # Version flag
-version = "4.0.1"
+version = "4.1.0"
 parser.add_argument('--version', action = 'version',
 	version = '%s v%s' % (sys.argv[0], version,))
 
@@ -171,6 +181,9 @@ maskpre = args.mask_prefix[0]
 doCompartments = args.do_annotate_compartments
 noplot = args.noplot
 noplot_compartments = args.no_compartment_plot
+
+labeled = args.labeled
+compressed = args.compressed
 
 dilate_factor = args.dilate[0]
 ncores = args.threads[0]
@@ -982,6 +995,30 @@ def angle_between_points( p0, c, p1 ):
 
 	return(tetha / math.pi * 180)
 
+def get_dtype(i):
+    '''
+    Identify bit depth for a matrix of maximum intensity i.
+    '''
+    depths = [1, 2, 4, 8, 16]
+    for depth in depths:
+        if i <= 2**depth-1:
+            return("u%d" % (depth,))
+    return("u")
+
+def save_tif(path, img, dtype, compressed):
+    new_shape = [1]
+    [new_shape.append(n) for n in img.shape]
+    img.shape = new_shape
+
+    if compressed:
+        tifffile.imsave(path, img.astype(dtype),
+            shape = img.shape, compress = 9,
+            dtype = dtype, imagej = True, metadata = {'axes' : 'CZYX'})
+    else:
+        tifffile.imsave(path, img.astype(dtype),
+            shape = img.shape, compress = 0,
+            dtype = dtype, imagej = True, metadata = {'axes' : 'CZYX'})
+
 def analyze_field_of_view(ii, imfov, imdir, an_type, seg_type,
 	maskdir, dilate_factor, aspect, t, main_mask_dir, main_mask_prefix,
 	doCompartments, plotCompartments, outdir):
@@ -996,7 +1033,7 @@ def analyze_field_of_view(ii, imfov, imdir, an_type, seg_type,
 
 	# Read image
 	msg += "   - Reading ...\n"
-	im = io.imread(os.path.join(imdir, impath))
+	im = tifffile.imread(os.path.join(imdir, impath))
 	if 1 == im.shape[0]:
 		im = im[0]
 
@@ -1028,7 +1065,7 @@ def analyze_field_of_view(ii, imfov, imdir, an_type, seg_type,
 	# Skip or binarize
 	if already_segmented:
 		msg += "   - Skipped binarization, using provided mask.\n"
-		imbin = io.imread(mpath)
+		imbin = tifffile.imread(mpath)
 		thr = 0
 	else:
 		msg += "   - Binarizing...\n"
@@ -1036,7 +1073,10 @@ def analyze_field_of_view(ii, imfov, imdir, an_type, seg_type,
 		if not type(None) == type(main_mask_dir):
 			if os.path.isdir(main_mask_dir):
 				msg += "   >>> Exporting mask as tif...\n"
-				io.imsave(mpath, imbin.astype('u4'))
+				if labeled:
+					save_tif(mpath, label(imbin), 'uint8', compressed)
+				else:
+					save_tif(mpath, imbin, 'uint8', compressed)
 		msg += log
 
 	# Find nuclei --------------------------------------------------------------
@@ -1059,7 +1099,6 @@ def analyze_field_of_view(ii, imfov, imdir, an_type, seg_type,
 	if not noplot and 0 != dilate_factor:
 		msg += "   - Saving dilated mask...\n"
 		imbin_dil = dilation(imbin, istruct)
-		#io.imsave("%sdilated.tif" % (maskdir,), imbin_dil.astype('u4'))
 		title = "Dilated mask, %d factor." % (dilate_factor,)
 		outname = "%smask.%s.dilated%d.png" % (maskdir, impath, dilate_factor)
 		save_mask_png(outname, imbin_dil, impath, title)
