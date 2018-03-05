@@ -5,12 +5,13 @@
 # 
 # Author: Gabriele Girelli
 # Email: gigi.ga90@gmail.com
-# Version: 4.1.0
+# Version: 4.1.1
 # Date: 20170718
 # Project: GPSeq
 # Description: Calculate radial position of dots in cells
 # 
 # Changelog:
+#  v4.1.1 - 20180305: fixed NaN issue in cell IDs.
 #  v4.1.0 - 20180302: added compatibility to compressed tiff files.
 #  v4.0.1 - 20180301: fixed rotation order.
 #  v4.0.0 - 20180301: added compartmentalization for ellipsoidal nuclei.
@@ -157,7 +158,7 @@ parser.add_argument('--no-compartment-plot',
 	help = 'Do not produce compartments-related plots.')
 
 # Version flag
-version = "4.1.0"
+version = "4.1.1"
 parser.add_argument('--version', action = 'version',
 	version = '%s v%s' % (sys.argv[0], version,))
 
@@ -360,14 +361,13 @@ def build_nuclei(msg, L, dilate_factor, series_id, thr, dna_bg, sig_bg,
 
 	return((msg, curnuclei))
 
-def dots2cells(t, nuclei, imbin, dilate_factor):
+def dots2cells(t, nuclei, dilate_factor):
 	'''
 	Assign dots to cells
 	
 	Args:
 	  t (pd.DataFrame): DOTTER output subset.
 	  nuclei (list(gp.Nucleus)): identified nuclei.
-	  imbin (np.ndarray): binarized image.
 	  dilate_factor (int): number of dilation operations.
 	
 	Returns:
@@ -399,8 +399,12 @@ def calc_dot_distances(msg, t, nuclei, aspect):
 	  str: message log..
 	'''
 
+	# Skip if no cells are present
+	if ( np.all(np.isnan(t['cell_ID'])) ):
+		return((t, msg))
+
 	# Calculate distances ------------------------------------------------------
-	for cid in range(int(t['cell_ID'].max()) + 1):
+	for cid in range(int(np.nanmax(t['cell_ID'])) + 1):
 		if cid in nuclei.keys():
 				msg += "    >>> Working on cell #%d...\n" % (cid,)
 				cell_cond = cid == t['cell_ID']
@@ -630,16 +634,17 @@ def annotate_compartments(msg, t, nuclei, outdir):
 	can be extracted by grepping lines starting with "   >>>> GoF_ellipse:".
 
 	Args:
-	   msg (string): log message, to be continued.
 	   t (pd.DataFrame): DOTTER output table.
-	   nuclei (list(gp.Nucleus)): identified nuclei.
+	   msg (string): log message, to be continued.
 
 	Returns:
 
 	'''
 
-	nan_cond = np.isnan(t.loc[:, 'x'])
+	nan_cond = np.isnan(t.loc[:, 'cell_ID'])
 	subt = t.loc[np.logical_not(nan_cond), :]
+	if 0 == subt.shape[0]:
+		return((t, msg))
 	fid = subt['File'].values[0]
 
 	for cid in range(int(subt['cell_ID'].max()) + 1):
@@ -1065,7 +1070,7 @@ def analyze_field_of_view(ii, imfov, imdir, an_type, seg_type,
 	# Skip or binarize
 	if already_segmented:
 		msg += "   - Skipped binarization, using provided mask.\n"
-		imbin = tifffile.imread(mpath)
+		imbin = tifffile.imread(mpath) != 0
 		thr = 0
 	else:
 		msg += "   - Binarizing...\n"
@@ -1109,7 +1114,7 @@ def analyze_field_of_view(ii, imfov, imdir, an_type, seg_type,
 
 	# Save mask ----------------------------------------------------------------
 	msg += "   - Saving nuclear ID mask...\n"
-	title = 'Nuclei in "%s" [%d objects]' % (impath, im.max())
+	title = 'Nuclei in "%s" [%d objects]' % (impath, L.max())
 	outpath = "%smask.%s.nuclei.png" % (maskdir, impath)
 	save_mask_png(outpath, L, impath, title)
 
@@ -1123,7 +1128,7 @@ def analyze_field_of_view(ii, imfov, imdir, an_type, seg_type,
 	# Assign dots to cells -----------------------------------------------------
 	msg += "   - Analysis...\n"
 	msg += "    > Assigning dots to cells...\n"
-	subt = dots2cells(t.loc[subt_idx, :], curnuclei, imbin, dilate_factor)
+	subt = dots2cells(t.loc[subt_idx, :], curnuclei, dilate_factor)
 
 	# Distances ----------------------------------------------------------------
 	msg += "    > Calculating lamina distance...\n"
