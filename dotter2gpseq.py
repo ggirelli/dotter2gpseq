@@ -12,6 +12,7 @@
 # 
 # Changelog:
 #  v4.1.2 - 20180306: fixed warning from pandas.
+#  					  Removed tiff format from png masks.
 #  v4.1.1 - 20180305: fixed NaN issue in cell IDs.
 #  v4.1.0 - 20180302: added compatibility to compressed tiff files.
 #  v4.0.1 - 20180301: fixed rotation order.
@@ -1098,7 +1099,7 @@ def analyze_field_of_view(ii, imfov, imdir, an_type, seg_type,
 
 	# Save default mask
 	msg += "   - Saving default binary mask...\n"
-	outname = "%smask.%s.default.png" % (maskdir, impath)
+	outname = "%smask.%s.default.png" % (maskdir, os.path.splitext(impath)[0])
 	save_mask_png(outname, imbin, impath, "Default mask.")
 
 	# Export dilated mask
@@ -1106,7 +1107,8 @@ def analyze_field_of_view(ii, imfov, imdir, an_type, seg_type,
 		msg += "   - Saving dilated mask...\n"
 		imbin_dil = dilation(imbin, istruct)
 		title = "Dilated mask, %d factor." % (dilate_factor,)
-		outname = "%smask.%s.dilated%d.png" % (maskdir, impath, dilate_factor)
+		outname = "%smask.%s.dilated%d.png" % (maskdir,
+			os.path.splitext(impath)[0], dilate_factor)
 		save_mask_png(outname, imbin_dil, impath, title)
 
 	# Identify nuclei
@@ -1116,7 +1118,7 @@ def analyze_field_of_view(ii, imfov, imdir, an_type, seg_type,
 	# Save mask ----------------------------------------------------------------
 	msg += "   - Saving nuclear ID mask...\n"
 	title = 'Nuclei in "%s" [%d objects]' % (impath, L.max())
-	outpath = "%smask.%s.nuclei.png" % (maskdir, impath)
+	outpath = "%smask.%s.nuclei.png" % (maskdir, os.path.splitext(impath)[0])
 	save_mask_png(outpath, L, impath, title)
 
 	# Store nuclei -------------------------------------------------------------
