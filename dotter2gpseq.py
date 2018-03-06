@@ -5,12 +5,13 @@
 # 
 # Author: Gabriele Girelli
 # Email: gigi.ga90@gmail.com
-# Version: 4.1.1
+# Version: 4.1.2
 # Date: 20170718
 # Project: GPSeq
 # Description: Calculate radial position of dots in cells
 # 
 # Changelog:
+#  v4.1.2 - 20180306: fixed warning from pandas.
 #  v4.1.1 - 20180305: fixed NaN issue in cell IDs.
 #  v4.1.0 - 20180302: added compatibility to compressed tiff files.
 #  v4.0.1 - 20180301: fixed rotation order.
@@ -158,7 +159,7 @@ parser.add_argument('--no-compartment-plot',
 	help = 'Do not produce compartments-related plots.')
 
 # Version flag
-version = "4.1.1"
+version = "4.1.2"
 parser.add_argument('--version', action = 'version',
 	version = '%s v%s' % (sys.argv[0], version,))
 
@@ -642,11 +643,11 @@ def annotate_compartments(msg, t, nuclei, outdir):
 	'''
 
 	nan_cond = np.isnan(t.loc[:, 'cell_ID'])
-	subt = t.loc[np.logical_not(nan_cond), :]
+	subt = t.loc[np.logical_not(nan_cond), :].copy()
 	if 0 == subt.shape[0]:
 		return((t, msg))
 	fid = subt['File'].values[0]
-
+	
 	for cid in range(int(subt['cell_ID'].max()) + 1):
 		if cid in nuclei.keys():
 			msg += "    >>> Working on cell #%d...\n" % (cid,)
@@ -758,7 +759,7 @@ def annotate_compartments(msg, t, nuclei, outdir):
 				outpng.close()
 
 			t.loc[np.logical_not(nan_cond), :] = subt
-
+	
 	return((t, msg))
 
 def flag_G1_cells(t, nuclei, outdir, dilate_factor, dot_file_name):
