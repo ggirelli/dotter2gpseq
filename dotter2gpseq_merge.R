@@ -162,7 +162,6 @@ l2 = by(md, paste0(md$dataset, "~", md$series), FUN = function(subt) {
 	lid = which(good)[1]
 	dots = l[[lid]]$dots
 	nuclei = l[[lid]]$nuclei
-	print(l)
 
 	# Add dataset, series and cell_type information ------------------------
 	dots$dataset = rep(dataset, nrow(dots))
