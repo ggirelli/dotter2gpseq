@@ -5,12 +5,13 @@
 # 
 # Author: Gabriele Girelli
 # Email: gigi.ga90@gmail.com
-# Version: 4.1.2
+# Version: 4.1.3
 # Date: 20170718
 # Project: GPSeq
 # Description: Calculate radial position of dots in cells
 # 
 # Changelog:
+#  v4.1.3 - 20180308: added compartment volume data.
 #  v4.1.2 - 20180306: fixed warning from pandas.
 #  					  Removed tiff format from png masks.
 #  v4.1.1 - 20180305: fixed NaN issue in cell IDs.
@@ -160,7 +161,7 @@ parser.add_argument('--no-compartment-plot',
 	help = 'Do not produce compartments-related plots.')
 
 # Version flag
-version = "4.1.2"
+version = "4.1.3"
 parser.add_argument('--version', action = 'version',
 	version = '%s v%s' % (sys.argv[0], version,))
 
@@ -747,6 +748,27 @@ def annotate_compartments(msg, t, nuclei, outdir):
 			status[dot_coords_t[1] < -(2 * c - a)] = 2
 			subt.loc[cell_cond, 'compartment'] = status
 
+			# Calculate compartment volume -------------------------------------
+
+			# Round up coordinates
+			xt = xt.astype('i')
+			zt = zt.astype('i')
+
+			# Count voxels in compartments
+			vpole = sum(xt > c) + sum(xt < -c)
+			vctop = np.logical_and(np.logical_and(xt < c, xt > -c), zt >= 0)
+			vctop = vctop.sum()
+			vcbot = np.logical_and(np.logical_and(xt < c, xt > -c), zt < 0)
+			vcbot = vcbot.sum()
+
+			# Assign volume information
+			volume = np.zeros(dot_coords.shape[1])
+			volume[:] = vctop
+			volume[dot_coords_t[2] < 0] = vcbot
+			volume[dot_coords_t[1] > 2 * c - a] = vpole
+			volume[dot_coords_t[1] < -(2 * c - a)] = vpole
+			subt.loc[cell_cond, 'compartment_volume'] = volume
+
 			# Generate compartment plot with dots ------------------------------
 			
 			if not type(None) == type(outdir):
@@ -1195,12 +1217,13 @@ t['lamin_dist'] = np.nan
 t['lamin_dist_norm'] = np.nan
 t['centr_dist'] = np.nan
 t['centr_dist_norm'] = np.nan
-t['dilation'] = dilate_factor
-t['angle'] = np.nan
 t['com'] = np.nan
-t['version'] = version
+t['angle'] = np.nan
 if doCompartments:
 	t['compartment'] = np.nan
+	t['compartment_volume'] = np.nan
+t['dilation'] = dilate_factor
+t['version'] = version
 
 # Identify images --------------------------------------------------------------
 
