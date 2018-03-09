@@ -1300,9 +1300,9 @@ tvdata = []
 for (curnuclei, subt, subt_idx, tvcomp, msg) in anData:
 	nuclei.extend(curnuclei.values())
 	t.loc[subt_idx, :] = subt
-	tvdata.append(tvcomp)
 	hlog.write(msg)
-tvdata = pd.concat(tvdata)
+	if doCompartments:
+		tvdata.append(tvcomp)
 hlog.close()
 
 
@@ -1312,8 +1312,10 @@ t = flag_G1_cells(t, nuclei, outdir, dilate_factor, dot_file_name)
 # Export -----------------------------------------------------------------------
 
 # Export compartment volume data
-outname = "%s/nuclear_compartment.volume.tsv" % (outdir,)
-t.to_csv(outname, sep = '\t', index = False)
+if doCompartments:
+	tvdata = pd.concat(tvdata)
+	outname = "%s/nuclear_compartment.volume.tsv" % (outdir,)
+	t.to_csv(outname, sep = '\t', index = False)
 
 # Export nuclei object vector
 f = open("%s/nuclei.pickle" % (outdir,), "wb+")
