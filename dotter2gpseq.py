@@ -5,12 +5,13 @@
 # 
 # Author: Gabriele Girelli
 # Email: gigi.ga90@gmail.com
-# Version: 4.1.3
+# Version: 4.1.4dev
 # Date: 20170718
 # Project: GPSeq
 # Description: Calculate radial position of dots in cells
 # 
 # Changelog:
+#  v4.1.4dev - 		: compartment volume data exported separately.
 #  v4.1.3 - 20180308: added compartment volume data.
 #  v4.1.2 - 20180306: fixed warning from pandas.
 #  					  Removed tiff format from png masks.
@@ -644,12 +645,24 @@ def annotate_compartments(msg, t, nuclei, outdir):
 
 	'''
 
+	# Temporarily remove dots outside cells
 	nan_cond = np.isnan(t.loc[:, 'cell_ID'])
 	subt = t.loc[np.logical_not(nan_cond), :].copy()
 	if 0 == subt.shape[0]:
 		return((t, msg))
 	fid = subt['File'].values[0]
 	
+	# Create empty table to host compartment volume data
+	vcomp_table = pd.DataFrame(index = range(int(subt['cell_ID'].max()) + 1))
+	vcomp_table['File'] = fid
+	vcomp_table['cell_ID'] = range(int(subt['cell_ID'].max()) + 1)
+	vcomp_table['center_bot'] = np.nan
+	vcomp_table['center_top'] = np.nan
+	vcomp_table['poles'] = np.nan
+	vcomp_table['ndots_center_bot'] = np.nan
+	vcomp_table['ndots_center_top'] = np.nan
+	vcomp_table['ndots_poles'] = np.nan
+
 	for cid in range(int(subt['cell_ID'].max()) + 1):
 		if cid in nuclei.keys():
 			msg += "    >>> Working on cell #%d...\n" % (cid,)
@@ -756,10 +769,16 @@ def annotate_compartments(msg, t, nuclei, outdir):
 
 			# Count voxels in compartments
 			vpole = sum(xt > c) + sum(xt < -c)
-			vctop = np.logical_and(np.logical_and(xt < c, xt > -c), zt >= 0)
-			vctop = vctop.sum()
-			vcbot = np.logical_and(np.logical_and(xt < c, xt > -c), zt < 0)
-			vcbot = vcbot.sum()
+			centr_cond = np.logical_and(xt < c, xt > -c)
+			vctop = np.logical_and(centr_cond, zt >= 0).sum()
+			vcbot = np.logical_and(centr_cond, zt < 0).sum()
+
+			vcomp_table.loc[cid, 'center_top'] = vctop
+			vcomp_table.loc[cid, 'center_bot'] = vcbot
+			vcomp_table.loc[cid, 'poles'] = vpole
+			vcomp_table.loc[cid, 'ndots_center_top'] = (status == 0).sum()
+			vcomp_table.loc[cid, 'ndots_center_bot'] = (status == 1).sum()
+			vcomp_table.loc[cid, 'ndots_poles'] = (status == 2).sum()
 
 			# Assign volume information
 			volume = np.zeros(dot_coords.shape[1])
@@ -783,7 +802,7 @@ def annotate_compartments(msg, t, nuclei, outdir):
 
 			t.loc[np.logical_not(nan_cond), :] = subt
 	
-	return((t, msg))
+	return((t, vcomp_table, msg))
 
 def flag_G1_cells(t, nuclei, outdir, dilate_factor, dot_file_name):
 	'''
@@ -1172,7 +1191,7 @@ def analyze_field_of_view(ii, imfov, imdir, an_type, seg_type,
 				os.mkdir(compdir)
 
 		# Perform annotation
-		subt, msg = annotate_compartments(msg, subt, curnuclei, compdir)
+		subt, tvcomp, msg = annotate_compartments(msg, subt, curnuclei, compdir)
 	else:
 		msg += "    > Skipped compartments annotation.\n"
 
@@ -1185,7 +1204,7 @@ def analyze_field_of_view(ii, imfov, imdir, an_type, seg_type,
 	# Output
 	msg += "< Finished job.\n"
 	#print(msg)
-	return((curnuclei, subt, subt_idx, msg))
+	return((curnuclei, subt, subt_idx, tvcomp, msg))
 
 # RUN ==========================================================================
 
@@ -1221,7 +1240,6 @@ t['com'] = np.nan
 t['angle'] = np.nan
 if doCompartments:
 	t['compartment'] = np.nan
-	t['compartment_volume'] = np.nan
 t['dilation'] = dilate_factor
 t['version'] = version
 
@@ -1278,16 +1296,24 @@ anData = Parallel(n_jobs = ncores, verbose = 11)(
 # Parse output and store log report --------------------------------------------
 
 hlog = open(os.path.join(outdir, "fov_analysis.log"), "w+")
-for (curnuclei, subt, subt_idx, msg) in anData:
+tvdata = []
+for (curnuclei, subt, subt_idx, tvcomp, msg) in anData:
 	nuclei.extend(curnuclei.values())
 	t.loc[subt_idx, :] = subt
+	tvdata.append(tvcomp)
 	hlog.write(msg)
+tvdata = pd.concat(tvdata)
 hlog.close()
+
 
 # Identify G1 cells ------------------------------------------------------------
 t = flag_G1_cells(t, nuclei, outdir, dilate_factor, dot_file_name)
 
 # Export -----------------------------------------------------------------------
+
+# Export compartment volume data
+outname = "%s/nuclear_compartment.volume.tsv" % (outdir,)
+t.to_csv(outname, sep = '\t', index = False)
 
 # Export nuclei object vector
 f = open("%s/nuclei.pickle" % (outdir,), "wb+")
