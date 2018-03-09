@@ -12,6 +12,7 @@
 # 
 # Changelog:
 #  v4.1.4dev - 		: compartment volume data exported separately.
+#  					  fixed compartment assignment.
 #  v4.1.3 - 20180308: added compartment volume data.
 #  v4.1.2 - 20180306: fixed warning from pandas.
 #  					  Removed tiff format from png masks.
@@ -197,7 +198,7 @@ ncores = args.threads[0]
 seg_type = gp.const.SEG_3D
 an_type = gp.const.AN_3D
 
-# Additional checks
+# Additional checks ------------------------------------------------------------
 if not outdir[-1] == "/":
 	while not os.path.isdir(outdir) and os.path.exists(outdir):
 		outdir += "_"
@@ -211,6 +212,9 @@ if maxncores < ncores:
 if 0 != dilate_factor and ax != ay:
 	print("Cannot apply dilation on images with different X/Y aspect.")
 	sys.exit()
+
+# Constants --------------------------------------------------------------------
+SINGLE_POLE_AXIS_FRACTION = 0.2
 
 # FUNCTIONS ====================================================================
 
@@ -647,15 +651,20 @@ def annotate_compartments(msg, t, nuclei, outdir):
 
 	# Temporarily remove dots outside cells
 	nan_cond = np.isnan(t.loc[:, 'cell_ID'])
+	vcomp_table = pd.DataFrame()
+
 	subt = t.loc[np.logical_not(nan_cond), :].copy()
 	if 0 == subt.shape[0]:
-		return((t, msg))
+		print("!WARNING! All dots in FoV#%d are outside cells." % (
+			t['File'].values[0],))
+		return((t, vcomp_table, msg))
+
 	fid = subt['File'].values[0]
 	
 	# Create empty table to host compartment volume data
-	vcomp_table = pd.DataFrame(index = range(int(subt['cell_ID'].max()) + 1))
+	vcomp_table = pd.DataFrame(index = range(1, int(subt['cell_ID'].max()) + 1))
 	vcomp_table['File'] = fid
-	vcomp_table['cell_ID'] = range(int(subt['cell_ID'].max()) + 1)
+	vcomp_table['cell_ID'] = range(1, int(subt['cell_ID'].max()) + 1)
 	vcomp_table['center_bot'] = np.nan
 	vcomp_table['center_top'] = np.nan
 	vcomp_table['poles'] = np.nan
@@ -755,10 +764,11 @@ def annotate_compartments(msg, t, nuclei, outdir):
 			# 0 = center-top
 			# 1 = center-bottom
 			# 2 = pole
+			cf = 1 - 2 * SINGLE_POLE_AXIS_FRACTION
 			status = np.zeros(dot_coords.shape[1])
 			status[dot_coords_t[2] < 0] = 1
-			status[dot_coords_t[1] > 2 * c - a] = 2
-			status[dot_coords_t[1] < -(2 * c - a)] = 2
+			status[dot_coords_t[0] > cf * a] = 2
+			status[dot_coords_t[0] < -(cf * a)] = 2
 			subt.loc[cell_cond, 'compartment'] = status
 
 			# Calculate compartment volume -------------------------------------
@@ -801,7 +811,7 @@ def annotate_compartments(msg, t, nuclei, outdir):
 				outpng.close()
 
 			t.loc[np.logical_not(nan_cond), :] = subt
-	
+
 	return((t, vcomp_table, msg))
 
 def flag_G1_cells(t, nuclei, outdir, dilate_factor, dot_file_name):
@@ -1315,7 +1325,7 @@ t = flag_G1_cells(t, nuclei, outdir, dilate_factor, dot_file_name)
 if doCompartments:
 	tvdata = pd.concat(tvdata)
 	outname = "%s/nuclear_compartment.volume.tsv" % (outdir,)
-	t.to_csv(outname, sep = '\t', index = False)
+	tvdata.to_csv(outname, sep = '\t', index = False)
 
 # Export nuclei object vector
 f = open("%s/nuclei.pickle" % (outdir,), "wb+")
