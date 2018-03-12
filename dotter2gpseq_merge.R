@@ -4,12 +4,14 @@
 # 
 # Author: Gabriele Girelli
 # Email: gigi.ga90@gmail.com
-# Version: 2.1.0
+# Version: 2.1.1
 # Description:
 # 	merge output of dotter2gpseq.py and add dataset and cell_type information.
 # 
 # Changelog:
-#  v2.1.0 180209 - changed terminology in output, copy instead of allele.
+#  v2.1.1 - 180312 - Added support to merge nuclear compartment data.
+#  					 Added parallelization for speed improvement.
+#  v2.1.0 - 180209 - changed terminology in output, copy instead of allele.
 #  v2.0.1 - fixed probe name assignment.
 #  v2.0.0 - requires only one metadata table.
 #  v1.1.0 - now supporting set/probe label columns in metadata.
@@ -22,6 +24,7 @@
 # DEPENDENCIES =================================================================
 
 suppressMessages(library(argparser))
+suppressMessages(library(parallel))
 
 # INPUT ========================================================================
 
@@ -53,6 +56,9 @@ parser = add_argument(parser, arg = '--outdir', short = '-o', nargs = 1,
 parser = add_argument(parser, arg = '--aspect', short = '-a', nargs = 3,
 	help = paste0('Physical size of Z, Y and X voxel sides.',
 		' Default: 300.0 130.0 130.0'), default = c(300.0, 130.0, 130.0))
+parser = add_argument(parser, arg = '--threads', short = '-t', nargs = 1,
+	help = paste0('Number of threads for parallelization. Default: 1'),
+	default = 1)
 
 # Parse arguments
 p = parse_args(parser)
@@ -70,6 +76,10 @@ if( 1 == length(indir) ) { if( is.na(indir) ) {
 if( is.na(outdir) ) {
 	stop("at least one output folder must be provided.")
 }
+if( 1 > threads ) {
+	threads = 1
+}
+
 # RUN ==========================================================================
 
 # Read metadata table
@@ -85,7 +95,8 @@ l0 = lapply(c("dataset", "series", "cell_line", "set_label", "probe_label"),
 })
 
 # Iterate through metadata
-l2 = by(md, paste0(md$dataset, "~", md$series), FUN = function(subt) {
+l2 = mclapply(split(md, paste0(md$dataset, "~", md$series)),
+	FUN = function(subt) {
 
 	# Extract dataset and series information -------------------------------
 	dataset = subt$dataset[1]
@@ -116,7 +127,9 @@ l2 = by(md, paste0(md$dataset, "~", md$series), FUN = function(subt) {
 		out$nuclei = flist[grepl("nuclei.out", flist)]
 		out$dots = flist[
 			grepl("wCentr.out", flist) & ! grepl("noAllele", flist)]
+		out$comps = flist[grepl("nuclear_compartment.volume.tsv", flist)]
 
+		# Nuclear data
 		if( 0 == length(out$nuclei) ) {
 			out$error = paste0("Warning: cannot find nuclei ",
 				"information in ", flag, ". Skipping ", dataset, ".\n",
@@ -128,6 +141,7 @@ l2 = by(md, paste0(md$dataset, "~", md$series), FUN = function(subt) {
 				as.is = T, header = T)
 		}
 
+		# Dots data
 		if( 0 == length(out$dots) ) {
 			out$error = paste0("Warning: cannot find dot information in ",
 				flag, ". Skipping ", dataset, ".\n",
@@ -138,6 +152,18 @@ l2 = by(md, paste0(md$dataset, "~", md$series), FUN = function(subt) {
 			out$dots = read.delim(paste0(ipath, "/", out$dots),
 				as.is = T, header = T)
 			out$dots$Channel = tolower(out$dots$Channel)
+		}
+
+		# Compartments data
+		if( 0 == length(out$comps) ) {
+			out$error = paste0("Warning: cannot find compartment information",
+				" in ", flag, ". Skipping ", dataset, ".\n",
+				"Folder: ", ipath)
+			out$good = F
+			out$partial = T
+		} else {
+			out$comps = read.delim(paste0(ipath, "/", out$comps),
+				as.is = T, header = T)
 		}
 
 		return(out)
@@ -162,6 +188,7 @@ l2 = by(md, paste0(md$dataset, "~", md$series), FUN = function(subt) {
 	lid = which(good)[1]
 	dots = l[[lid]]$dots
 	nuclei = l[[lid]]$nuclei
+	comps = l[[lid]]$comps
 
 	# Add dataset, series and cell_type information ------------------------
 	dots$dataset = rep(dataset, nrow(dots))
@@ -170,6 +197,8 @@ l2 = by(md, paste0(md$dataset, "~", md$series), FUN = function(subt) {
 	dots$cell_type = rep(cell_type, nrow(dots))
 	nuclei$dataset = rep(dataset, nrow(nuclei))
 	nuclei$cell_type = rep(cell_type, nrow(nuclei))
+	comps$dataset = rep(dataset, nrow(comps))
+	comps$cell_type = rep(cell_type, nrow(comps))
 
 	# Prepare allele by channel table --------------------------------------
 	aldata = as.numeric(dots$Allele)
@@ -200,16 +229,17 @@ l2 = by(md, paste0(md$dataset, "~", md$series), FUN = function(subt) {
 	}
 
 	# Output ---------------------------------------------------------------
-	return(list(dots = dots, nuclei = nuclei, alleles = alleles))
-})
+	return(list(dots = dots, nuclei = nuclei, comps = comps, alleles = alleles))
+}, mc.cores = threads)
 
 # Remove skipped
 l2 = l2[!is.null(l2)]
 
 # Output
-alleles = lapply(l2, FUN = function(x) x[[3]])
-dots = do.call(rbind, lapply(l2, FUN = function(x) x[[1]]))
-nuclei = do.call(rbind, lapply(l2, FUN = function(x) x[[2]]))
+alleles = lapply(l2, FUN = function(x) x$alleles)
+dots = do.call(rbind, lapply(l2, FUN = function(x) x$dots))
+nuclei = do.call(rbind, lapply(l2, FUN = function(x) x$nuclei))
+comps = do.call(rbind, lapply(l2, FUN = function(x) x$comps))
 alleles = do.call(rbind, alleles[!is.null(alleles)])
 
 # Write output
@@ -219,6 +249,8 @@ write.table(dots, paste0(outdir, "/", Sys.Date(), "_dots.merged.tsv"),
 write.table(alleles, paste0(outdir, "/", Sys.Date(), "_copies.merged.tsv"),
 	col.names = T, row.names = F, quote = F, sep = "\t")
 write.table(nuclei, paste0(outdir, "/", Sys.Date(), "_nuclei.merged.tsv"),
+	col.names = T, row.names = F, quote = F, sep = "\t")
+write.table(comps, paste0(outdir, "/", Sys.Date(), "_ncomps.merged.tsv"),
 	col.names = T, row.names = F, quote = F, sep = "\t")
 
 # END --------------------------------------------------------------------------
