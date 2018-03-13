@@ -5,14 +5,15 @@
 # 
 # Author: Gabriele Girelli
 # Email: gigi.ga90@gmail.com
-# Version: 4.1.4dev
+# Version: 4.1.4
 # Date: 20170718
 # Project: GPSeq
 # Description: Calculate radial position of dots in cells
 # 
 # Changelog:
-#  v4.1.4dev - 		: compartment volume data exported separately.
-#  					  fixed compartment assignment.
+#  v4.1.4 - 20180313: compartment volume data exported separately.
+#  					  Fixed compartment assignment.
+#  					  Allowed for user-specifided pole compartment definition.
 #  v4.1.3 - 20180308: added compartment volume data.
 #  v4.1.2 - 20180306: fixed warning from pandas.
 #  					  Removed tiff format from png masks.
@@ -123,22 +124,26 @@ parser.add_argument('-a', '--aspect', type = float, nargs = 3,
 	help = """Physical size of Z, Y and X voxel sides.
 	Default: 300.0 130.0 130.0""",
 	metavar = ('Z', 'Y', 'X'), default = [300., 130., 130.])
-parser.add_argument('-d', '--delim', type = str, nargs = 1,
+parser.add_argument('-d', '--delim', metavar = "sep", type = str, nargs = 1,
 	help = """Input table delimiter. Default: ','""", default = [','])
-parser.add_argument('--dilate', type = int, nargs = 1,
+parser.add_argument('-D', '--dilate', metavar = "npx", type = int, nargs = 1,
 	help = """Number of pixels for nuclear mask dilation. It is automatically
 	scaled based on the specified aspect to be isotropic in 3D. Default: 0""",
 	default = [0])
-parser.add_argument('-t', '--threads', type = int, nargs = 1,
+parser.add_argument('-t', '--threads', metavar = "nthreads", type = int,
 	help = """Number of threads for parallelization. Default: 1""",
-	default = [1])
-parser.add_argument('-m', '--mask-folder', type = str, nargs = 1,
+	default = [1], nargs = 1)
+parser.add_argument('-m', '--mask-folder', metavar = "folder", type = str,
 	help = """Path to folder containing binarized/labeled images.
 	Masks will be saved to this folder if missing.""",
-	default = [None])
-parser.add_argument('-M', '--mask-prefix', type = str, nargs = 1,
+	default = [None], nargs = 1)
+parser.add_argument('-M', '--mask-prefix', metavar = "prefix", type = str,
 	help = """Prefix for mask selection. Default: 'mask_'.""",
-	default = ["mask_"])
+	default = ["mask_"], nargs = 1)
+parser.add_argument('-P', '--pole', metavar = "axis_fraction", type = int,
+	help = """Fraction of the major nuclear axis to identify a pole.
+	Should be in the [0, .5] interval. Default: .25.""",
+	default = [.25], nargs = 1)
 
 # Add flags
 parser.add_argument('--labeled',
@@ -149,21 +154,19 @@ parser.add_argument('--compressed',
     action = 'store_const', dest = 'compressed',
     const = True, default = False,
     help = 'Generate compressed TIF binary masks (not compatible with ImageJ.')
-parser.add_argument('--annotate-compartments',
-	action = 'store_const', dest = 'do_annotate_compartments',
-	const = True, default = False,
+parser.add_argument('--annotate-compart', action = 'store_const',
+	dest = 'do_annotate_compartments', const = True, default = False,
 	help = 'Assign dots to nuclear compartments, only for ellipsoidal nuclei.')
 parser.add_argument('--noplot',
 	action = 'store_const', dest = 'noplot',
 	const = True, default = False,
 	help = 'Do not produce any plots.')
-parser.add_argument('--no-compartment-plot',
-	action = 'store_const', dest = 'no_compartment_plot',
-	const = True, default = False,
+parser.add_argument('--no-compart-plot', action = 'store_const',
+	dest = 'no_compartment_plot', const = True, default = False,
 	help = 'Do not produce compartments-related plots.')
 
 # Version flag
-version = "4.1.3"
+version = "4.1.4"
 parser.add_argument('--version', action = 'version',
 	version = '%s v%s' % (sys.argv[0], version,))
 
@@ -185,6 +188,7 @@ mask_iodir = args.mask_folder[0]
 maskpre = args.mask_prefix[0]
 
 doCompartments = args.do_annotate_compartments
+pole_fraction = args.pole[0]
 noplot = args.noplot
 noplot_compartments = args.no_compartment_plot
 
@@ -200,11 +204,9 @@ an_type = gp.const.AN_3D
 
 # Additional checks ------------------------------------------------------------
 if not outdir[-1] == "/":
-	while not os.path.isdir(outdir) and os.path.exists(outdir):
-		outdir += "_"
+	while not os.path.isdir(outdir) and os.path.exists(outdir): outdir += "_"
 	outdir += "/"
-if not imdir[-1] in ['/\\']:
-	imdir += "/"
+if not imdir[-1] in ['/\\']: imdir += "/"
 maxncores = multiprocessing.cpu_count()
 if maxncores < ncores:
 	print("Lowered number of threads to maximum available: %d" % (maxncores))
@@ -212,9 +214,8 @@ if maxncores < ncores:
 if 0 != dilate_factor and ax != ay:
 	print("Cannot apply dilation on images with different X/Y aspect.")
 	sys.exit()
-
-# Constants --------------------------------------------------------------------
-SINGLE_POLE_AXIS_FRACTION = 0.2
+if 0 > pole_fraction: pole_fraction = 0
+if 0.5 < pole_fraction: pole_fraction = 0.5
 
 # FUNCTIONS ====================================================================
 
@@ -764,7 +765,7 @@ def annotate_compartments(msg, t, nuclei, outdir):
 			# 0 = center-top
 			# 1 = center-bottom
 			# 2 = pole
-			cf = 1 - 2 * SINGLE_POLE_AXIS_FRACTION
+			cf = 1 - 2 * pole_fraction
 			status = np.zeros(dot_coords.shape[1])
 			status[dot_coords_t[2] < 0] = 1
 			status[dot_coords_t[0] > cf * a] = 2
