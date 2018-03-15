@@ -1,5 +1,7 @@
-dotter2gpseq
+dotter2gpseq (not maintained)
 =============
+
+**Note! As of 2018-03-15 `dotter2gpseq` was merged with [`gpseq-img-py`](http://github.com/ggirelli/gpseq-img-py) and is not maintained anymore.**
 
 A collection of scripts that can be used in combination with pygpseq to perform advanced operations.
 
